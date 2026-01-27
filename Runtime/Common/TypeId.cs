@@ -13,35 +13,45 @@ namespace Massive
 	public static class TypeId<TKind>
 	{
 		private static readonly Dictionary<Type, TypeIdInfo> s_typeInfo = new Dictionary<Type, TypeIdInfo>();
+		private static readonly object s_lock = new object();
 		private static Type[] s_types = Array.Empty<Type>();
 		private static int s_typeCounter = -1;
 
 		[MethodImpl(MethodImplOptions.NoInlining)]
 		public static TypeIdInfo GetInfo(Type type)
 		{
-			if (!s_typeInfo.TryGetValue(type, out var typeIdInfo))
+			lock (s_lock)
 			{
-				WarmupTypeId(type);
-				typeIdInfo = s_typeInfo[type];
-			}
+				if (!s_typeInfo.TryGetValue(type, out var typeIdInfo))
+				{
+					WarmupTypeId(type);
+					typeIdInfo = s_typeInfo[type];
+				}
 
-			return typeIdInfo;
+				return typeIdInfo;
+			}
 		}
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public static bool TryGetInfo(Type type, out TypeIdInfo info)
 		{
-			return s_typeInfo.TryGetValue(type, out info);
+			lock (s_lock)
+			{
+				return s_typeInfo.TryGetValue(type, out info);
+			}
 		}
 
 		public static Type GetTypeByIndex(int index)
 		{
-			if (index >= s_types.Length)
+			lock (s_lock)
 			{
-				return null;
-			}
+				if (index >= s_types.Length)
+				{
+					return null;
+				}
 
-			return s_types[index];
+				return s_types[index];
+			}
 		}
 
 		public static void WarmupTypeId(Type type)
@@ -66,13 +76,16 @@ namespace Massive
 
 		internal static void Register(Type type, TypeIdInfo info)
 		{
-			s_typeInfo.Add(type, info);
-
-			if (info.Index >= s_types.Length)
+			lock (s_lock)
 			{
-				s_types = s_types.ResizeToNextPowOf2(info.Index + 1);
+				s_typeInfo.Add(type, info);
+
+				if (info.Index >= s_types.Length)
+				{
+					s_types = s_types.ResizeToNextPowOf2(info.Index + 1);
+				}
+				s_types[info.Index] = type;
 			}
-			s_types[info.Index] = type;
 		}
 	}
 

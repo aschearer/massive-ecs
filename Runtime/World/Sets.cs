@@ -1,4 +1,4 @@
-﻿#if !MASSIVE_DISABLE_ASSERT
+#if !MASSIVE_DISABLE_ASSERT
 #define MASSIVE_ASSERT
 #endif
 
@@ -198,7 +198,16 @@ namespace Massive
 
 				if (otherSet == null || otherSet.TypeId != set.TypeId)
 				{
-					ref var otherMatchedSet = ref other.LookupByComponentId[other.LookupByTypeId[set.TypeId].ComponentId];
+					var otherMatchedComponentId = other.LookupByTypeId[set.TypeId].ComponentId;
+					ref var otherMatchedSet = ref other.LookupByComponentId[otherMatchedComponentId];
+
+					// Rebind the outgoing DataSet to its new position BEFORE the swap
+					// to prevent stale ComponentId lookups in subsequent iterations.
+					if (otherSet != null)
+					{
+						otherSet.BindComponentId(otherMatchedComponentId);
+					}
+
 					(otherSet, otherMatchedSet) = (otherMatchedSet, otherSet);
 				}
 
