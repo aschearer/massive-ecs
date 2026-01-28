@@ -20,11 +20,13 @@ namespace Massive
 			Info = new UnmanagedInfo(SizeInBytes, Alignment);
 		}
 
+		#pragma warning disable CS0649 // Fields are used only for Marshal.OffsetOf alignment calculation
 		private struct AlignmentHelper
 		{
 			public byte Padding;
 			public T Target;
 		}
+		#pragma warning restore CS0649
 	}
 
 	public struct UnmanagedInfo
