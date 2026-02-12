@@ -7,16 +7,18 @@ namespace Massive
 	{
 		private readonly Allocator _allocator;
 		private readonly bool _storeEmptyTypesAsDataSets;
+		private readonly Func<Type, bool> _isNonRollback;
 
 		public SetFactory(Allocator allocator, WorldConfig worldConfig)
-			: this(allocator, worldConfig.StoreEmptyTypesAsDataSets)
+			: this(allocator, worldConfig.StoreEmptyTypesAsDataSets, worldConfig.IsNonRollback)
 		{
 		}
 
-		public SetFactory(Allocator allocator, bool storeEmptyTypesAsDataSets = false)
+		public SetFactory(Allocator allocator, bool storeEmptyTypesAsDataSets = false, Func<Type, bool> isNonRollback = null)
 		{
 			_allocator = allocator;
 			_storeEmptyTypesAsDataSets = storeEmptyTypesAsDataSets;
+			_isNonRollback = isNonRollback;
 		}
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -47,7 +49,13 @@ namespace Massive
 		private Output CreateDataSet<T>()
 		{
 			var type = typeof(T);
-			if (CopyableUtils.IsImplementedFor(type))
+			if (_isNonRollback != null && _isNonRollback(type))
+			{
+				var dataSet = new DataSet<T>(Default<T>.Value);
+				var cloner = new BitSetOnlyCloner<T>(dataSet);
+				return new Output(dataSet, cloner);
+			}
+			else if (CopyableUtils.IsImplementedFor(type))
 			{
 				var dataSet = CopyableUtils.CreateCopyingDataSet(Default<T>.Value);
 				var cloner = CopyableUtils.CreateCopyingDataSetCloner(dataSet);
