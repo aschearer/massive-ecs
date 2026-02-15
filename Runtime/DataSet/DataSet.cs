@@ -218,5 +218,9 @@ namespace Massive
 		void IDataSet.SetRaw(int id, object value) => Set(id, (T)value);
 
 		DataPageEnumerable IDataSet.GetDataPages() => new DataPageEnumerable(this);
+
+		int IDataSet.ElementSize => System.Runtime.InteropServices.Marshal.SizeOf<T>();
+
+		bool IDataSet.IsUnmanaged => !RuntimeHelpers.IsReferenceOrContainsReferences<T>();
 	}
 }

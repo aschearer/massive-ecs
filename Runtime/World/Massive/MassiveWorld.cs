@@ -36,6 +36,12 @@ namespace Massive
 		public int CanRollbackFrames => _cyclicFrameCounter.CanRollbackFrames;
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public void ForgetHistory()
+		{
+			_cyclicFrameCounter.ForgetHistory();
+		}
+
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public void SaveFrame()
 		{
 			_cyclicFrameCounter.SaveFrame();

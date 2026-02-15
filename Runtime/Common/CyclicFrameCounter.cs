@@ -35,6 +35,16 @@ namespace Massive
 			_savedFrames = MathUtils.Min(_savedFrames + 1, FramesCapacity);
 		}
 
+		/// <summary>
+		/// Discards all saved frames so that no rollback is possible
+		/// until new frames are saved.
+		/// </summary>
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public void ForgetHistory()
+		{
+			_savedFrames = 0;
+		}
+
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public void Rollback(int frames)
 		{

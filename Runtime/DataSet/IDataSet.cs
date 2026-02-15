@@ -19,5 +19,9 @@ namespace Massive
 		void SetRaw(int id, object value);
 
 		DataPageEnumerable GetDataPages();
+
+		int ElementSize { get; }
+
+		bool IsUnmanaged { get; }
 	}
 }
