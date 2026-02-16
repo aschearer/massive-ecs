@@ -2,6 +2,7 @@
 #define MASSIVE_ASSERT
 #endif
 
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Unity.IL2CPP.CompilerServices;
 
@@ -173,6 +174,29 @@ namespace Massive
 			}
 
 			return candidate.Remove(id);
+		}
+
+		/// <summary>
+		/// Removes all components from the entity except those whose component IDs
+		/// are in the <paramref name="keepComponentIds"/> set.
+		/// </summary>
+		/// <remarks>
+		/// Useful for returning entities to an object pool: strip gameplay-added
+		/// components while preserving the prefab archetype.
+		/// </remarks>
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public static void RemoveComponentsExcept(this World world, int id, HashSet<int> keepComponentIds)
+		{
+			var buffer = world.Components.Buffer;
+			var count = world.Components.GetAll(id, buffer);
+			for (var i = 0; i < count; i++)
+			{
+				if (!keepComponentIds.Contains(buffer[i]))
+				{
+					world.Components.Remove(id, buffer[i]);
+					world.Sets.LookupByComponentId[buffer[i]].Remove(id);
+				}
+			}
 		}
 
 		/// <summary>
