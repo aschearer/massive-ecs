@@ -1,16 +1,23 @@
 using System;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 
 namespace Massive
 {
 	/// <summary>
 	/// Rollback extension for <see cref="World"/>.
+	/// Uses a growable frame buffer so the entire history since the last
+	/// <see cref="ForgetHistory"/> call is available for rollback.
 	/// </summary>
 	public class MassiveWorld : World, IMassive
 	{
-		private readonly CyclicFrameCounter _cyclicFrameCounter;
+		private readonly List<World> _frames = new();
+		private readonly WorldConfig _config;
 
-		private readonly World[] _frames;
+		/// <summary>
+		/// Index of the most recently saved frame, or -1 when no history exists.
+		/// </summary>
+		private int _head = -1;
 
 		public MassiveWorld()
 			: this(new MassiveWorldConfig())
@@ -20,35 +27,36 @@ namespace Massive
 		public MassiveWorld(MassiveWorldConfig worldConfig)
 			: base(worldConfig)
 		{
-			_cyclicFrameCounter = new CyclicFrameCounter(worldConfig.FramesCapacity);
-
-			_frames = new World[worldConfig.FramesCapacity];
-
-			for (var i = 0; i < worldConfig.FramesCapacity; i++)
-			{
-				_frames[i] = new World(worldConfig);
-			}
+			_config = worldConfig;
 		}
 
 		public event Action FrameSaved;
 		public event Action<int> Rollbacked;
 
-		public int CanRollbackFrames => _cyclicFrameCounter.CanRollbackFrames;
+		public int CanRollbackFrames
+		{
+			[MethodImpl(MethodImplOptions.AggressiveInlining)]
+			get => _head;
+		}
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public void ForgetHistory()
 		{
-			_cyclicFrameCounter.ForgetHistory();
+			_head = -1;
+			// Keep _frames list intact — slots are reused on the next SaveFrame calls.
 		}
 
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public void SaveFrame()
 		{
-			_cyclicFrameCounter.SaveFrame();
+			_head++;
 
-			var currentFrame = _cyclicFrameCounter.CurrentFrame;
+			if (_head >= _frames.Count)
+			{
+				_frames.Add(new World(_config));
+			}
 
-			this.CopyTo(_frames[currentFrame]);
+			this.CopyTo(_frames[_head]);
 
 			FrameSaved?.Invoke();
 		}
@@ -56,11 +64,17 @@ namespace Massive
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public void Rollback(int frames)
 		{
-			_cyclicFrameCounter.Rollback(frames);
+			NegativeArgumentException.ThrowIfNegative(frames);
 
-			var rollbackFrame = _cyclicFrameCounter.CurrentFrame;
+			if (frames > CanRollbackFrames)
+			{
+				throw new ArgumentOutOfRangeException(nameof(frames), frames,
+					$"Can't rollback this far. CanRollbackFrames: {CanRollbackFrames}.");
+			}
 
-			_frames[rollbackFrame].CopyTo(this);
+			_head -= frames;
+
+			_frames[_head].CopyTo(this);
 
 			Rollbacked?.Invoke(frames);
 		}
@@ -78,9 +92,15 @@ namespace Massive
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public World Peekback(int frames)
 		{
-			var peekbackFrame = _cyclicFrameCounter.Peekback(frames);
+			NegativeArgumentException.ThrowIfNegative(frames);
 
-			return _frames[peekbackFrame];
+			if (frames > CanRollbackFrames)
+			{
+				throw new ArgumentOutOfRangeException(nameof(frames), frames,
+					$"Can't peekback this far. CanRollbackFrames: {CanRollbackFrames}.");
+			}
+
+			return _frames[_head - frames];
 		}
 	}
 }
