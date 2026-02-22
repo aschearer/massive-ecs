@@ -290,6 +290,39 @@ namespace Massive
 			ComponentCount = 0;
 		}
 
+		public void DiffTo(Sets shadow, FrameDiff diff)
+		{
+			for (var i = 0; i < Cloners.Count; i++)
+			{
+				// Use TypeId as a stable identifier — the sorted list index
+				// shifts when new types are inserted, but TypeId never changes.
+				var stableId = Sorted[i].TypeId;
+				Cloners[i].DiffTo(shadow, diff, stableId);
+			}
+		}
+
+		public void ApplyDiff(Sets target, FrameDiff diff)
+		{
+			for (var i = 0; i < Cloners.Count; i++)
+			{
+				var stableId = Sorted[i].TypeId;
+				Cloners[i].ApplyDiff(target, diff, stableId);
+			}
+		}
+
+		/// <summary>
+		/// Copies set data (bitset arrays and data pages) without modifying
+		/// component bindings or reordering. Used by rollback where the
+		/// target's binding layout must be preserved.
+		/// </summary>
+		public void CopyDataTo(Sets other)
+		{
+			foreach (var cloner in Cloners)
+			{
+				cloner.CopyTo(other);
+			}
+		}
+
 		/// <summary>
 		/// Copies all sets from this registry into the specified one.
 		/// Clears sets in the target registry that are not present in the source.

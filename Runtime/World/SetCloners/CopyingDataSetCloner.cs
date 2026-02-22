@@ -1,4 +1,5 @@
-﻿using Unity.IL2CPP.CompilerServices;
+using System;
+using Unity.IL2CPP.CompilerServices;
 
 namespace Massive
 {
@@ -16,6 +17,16 @@ namespace Massive
 		public override void CopyTo(Sets sets)
 		{
 			_dataSet.CopyToCopyable((DataSet<T>)sets.Get<T>());
+		}
+
+		public override void DiffTo(Sets shadow, FrameDiff diff, int setIndex)
+		{
+			throw new NotSupportedException("Delta compression is not supported for ICopyable<T> components.");
+		}
+
+		public override void ApplyDiff(Sets target, FrameDiff diff, int setIndex)
+		{
+			throw new NotSupportedException("Delta compression is not supported for ICopyable<T> components.");
 		}
 	}
 }
