@@ -370,11 +370,21 @@ namespace Massive
 			Array.Copy(Bits, other.Bits, Bits.Length);
 
 			other.EnsureEntityAt(UsedIds - 1);
-			other.EnsurePoolAt(PooledIds - 1);
 
-			Array.Copy(Pool, other.Pool, PooledIds);
+			// Copy the full Pool array — entries beyond PooledIds are logically unused,
+			// but XOR delta rollback diffs reference them (poolLength = Max of both sides'
+			// PooledIds at SaveFrame time). Copying only PooledIds entries leaves stale
+			// data in the destination, breaking the live == shadow invariant that the
+			// XOR diff scheme requires.
+			var poolCopyLength = Math.Max(Pool.Length, other.Pool.Length);
+			other.EnsurePoolAt(poolCopyLength - 1);
+			Array.Copy(Pool, other.Pool, Pool.Length);
+			if (Pool.Length < other.Pool.Length)
+			{
+				Array.Fill(other.Pool, 0, Pool.Length, other.Pool.Length - Pool.Length);
+			}
+
 			Array.Copy(Versions, other.Versions, UsedIds);
-
 			if (UsedIds < other.UsedIds)
 			{
 				Array.Fill(other.Versions, 1U, UsedIds, other.UsedIds - UsedIds);
