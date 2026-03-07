@@ -38,6 +38,14 @@ namespace Massive
 			world.Components.CopyTo(other.Components);
 			world.Sets.CopyTo(other.Sets);
 			world.Allocator.CopyTo(other.Allocator);
+
+			// Sets.CopyTo may reorder the target's component bindings to match
+			// the source. Components.CopyTo copies the bitmap verbatim, which
+			// uses the source's binding layout. If the source's Components.BitMap
+			// was out of sync with its own Sets (e.g. shadow worlds maintained
+			// via raw XOR diffs), the target inherits the mismatch. Rebuild
+			// from the authoritative set membership data.
+			other.Components.RebuildFromSets(other.Sets);
 		}
 	}
 }

@@ -199,5 +199,35 @@ namespace Massive
 				Array.Fill(other.BitMap, 0UL, BitMapCapacity, other.BitMapCapacity - BitMapCapacity);
 			}
 		}
+
+		/// <summary>
+		/// Rebuilds the entire BitMap from the component sets' membership data.
+		/// Call after <see cref="Sets.CopyTo"/> which may reorder component bindings,
+		/// making the raw BitMap (copied verbatim from the source) inconsistent with
+		/// the target's binding layout.
+		/// </summary>
+		public void RebuildFromSets(Sets sets)
+		{
+			Array.Fill(BitMap, 0UL);
+
+			for (var ci = 0; ci < sets.ComponentCount; ci++)
+			{
+				var set = sets.LookupByComponentId[ci];
+				if (set == null) continue;
+
+				for (var bitsIndex = 0; bitsIndex < set.Bits.Length; bitsIndex++)
+				{
+					var bits = set.Bits[bitsIndex];
+					while (bits != 0UL)
+					{
+						var bit = (int)(((bits & (ulong)-(long)bits) * 0x37E84A99DAE458FUL) >> 58);
+						bit = DeBruijn[bit];
+						var entityId = (bitsIndex << 6) + bit;
+						Set(entityId, ci);
+						bits &= bits - 1UL;
+					}
+				}
+			}
+		}
 	}
 }

@@ -253,7 +253,11 @@ namespace Massive
 		public static void ApplyDiffForward(FrameDiff diff, World target)
 		{
 			ApplyEntitiesDiff(diff, target);
-			ApplyComponentsDiff(diff, target);
+			// Skip ApplyComponentsDiff — the diff entries use the source world's
+			// component ID layout, which may differ from the target's binding
+			// layout (shadow worlds can assign different IDs during DiffTo).
+			// Instead, rebuild Components.BitMap from the authoritative set data
+			// after applying set-level diffs (which are type-matched via TypeId).
 			target.Sets.ApplyDiff(target.Sets, diff);
 			// NonEmptyBlocks and SaturatedBlocks are derived summaries of Bits.
 			// XOR-based diff replay can desynchronize them when the echo's intermediate
@@ -266,6 +270,8 @@ namespace Massive
 			// XOR may activate pages that don't have data arrays allocated yet
 			// (e.g. pages with default-valued data produce no DataPage diff entries).
 			target.Sets.EnsureAllDataPages();
+			// Rebuild bitmap from authoritative set membership data.
+			target.Components.RebuildFromSets(target.Sets);
 			// Restore entity state from the diff, but never shrink UsedIds below
 			// the target's current value — the target may have entities spawned
 			// after the fork whose IDs are above the diff's UsedIds.
@@ -323,7 +329,11 @@ namespace Massive
 			shadow.EnsureEntitiesCapacity(live.EntitiesCapacity);
 			if (live.MaskLength > shadow.MaskLength)
 			{
-				shadow.EnsureComponentsCapacity(live.MaskLength << 6);
+				// Use (MaskLength * 64 - 1) as the capacity, not (MaskLength * 64).
+				// EnsureComponentsCapacity computes maskLength = (capacity >> 6) + 1,
+				// so passing MaskLength * 64 overshoots by one mask word, causing a
+				// stride mismatch between live and shadow that corrupts XOR diffs.
+				shadow.EnsureComponentsCapacity((live.MaskLength << 6) - 1);
 			}
 
 			// Shadow is now >= live capacity. Diff only up to live's range
