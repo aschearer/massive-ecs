@@ -3,6 +3,7 @@
 #endif
 
 using System;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Unity.IL2CPP.CompilerServices;
 
@@ -17,6 +18,13 @@ namespace Massive
 	public class DataSet<T> : BitSet, IDataSet
 	{
 		public T DefaultValue { get; }
+
+		/// <summary>
+		/// When true, pages are not deallocated on removal.
+		/// Used for non-rollback sets so data pages survive entity destruction
+		/// and remain accessible after rollback restores bitset membership.
+		/// </summary>
+		public bool RetainPages { get; set; }
 
 		public T[][] PagedData { get; private set; } = Array.Empty<T[]>();
 
@@ -95,11 +103,19 @@ namespace Massive
 
 		protected override void ClearData(int id)
 		{
-			PagedData[id >> Constants.PageSizePower][id & Constants.PageSizeMinusOne] = DefaultValue;
+			// Non-rollback sets (RetainPages) must preserve data across removal.
+			// Rollback can restore bitset membership via XOR diffs, but data is
+			// not diffed — so the values from before removal must still be intact.
+			if (RetainPages) return;
+			var pageIndex = id >> Constants.PageSizePower;
+			Debug.Assert(pageIndex < PagedData.Length && PagedData[pageIndex] != null,
+				$"ClearData: null page for {typeof(T).Name}, id={id}, page={pageIndex}");
+			PagedData[pageIndex][id & Constants.PageSizeMinusOne] = DefaultValue;
 		}
 
 		protected override void FreePage(int page)
 		{
+			if (RetainPages) return;
 			FreePageInternal(page);
 		}
 

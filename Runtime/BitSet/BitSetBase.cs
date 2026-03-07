@@ -16,6 +16,39 @@ namespace Massive
 
 		public int BlocksCapacity { get; private set; }
 
+		/// <summary>
+		/// Recalculates <see cref="NonEmptyBlocks"/> and <see cref="SaturatedBlocks"/>
+		/// from <see cref="Bits"/>. Call after XOR-based forward diff application where
+		/// the derived block arrays may be out of sync with the primary bit data.
+		/// </summary>
+		[MethodImpl(MethodImplOptions.NoInlining)]
+		public void RebuildDerivedBlocks()
+		{
+			for (var blockIndex = 0; blockIndex < BlocksCapacity; blockIndex++)
+			{
+				ulong nonEmpty = 0UL;
+				ulong saturated = 0UL;
+				var bitsStart = blockIndex << 6;
+
+				for (var i = 0; i < 64; i++)
+				{
+					var bits = Bits[bitsStart + i];
+					var mask = 1UL << i;
+					if (bits != 0UL)
+					{
+						nonEmpty |= mask;
+					}
+					if (bits == ulong.MaxValue)
+					{
+						saturated |= mask;
+					}
+				}
+
+				NonEmptyBlocks[blockIndex] = nonEmpty;
+				SaturatedBlocks[blockIndex] = saturated;
+			}
+		}
+
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public void GrowToFit(BitSetBase other)
 		{

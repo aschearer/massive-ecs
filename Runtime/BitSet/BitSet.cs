@@ -262,6 +262,29 @@ namespace Massive
 		{
 		}
 
+		/// <summary>
+		/// Ensures pages exist for all non-empty bit ranges.
+		/// For plain BitSet this is a no-op; DataSet overrides EnsurePage to allocate data pages.
+		/// </summary>
+		public void EnsurePagesForActiveBits()
+		{
+			var blocksLength = BlocksCapacity;
+			var pageMasksNegative = Constants.PageMasksNegative;
+			var deBruijn = MathUtils.DeBruijn;
+			for (var blockIndex = 0; blockIndex < blocksLength; blockIndex++)
+			{
+				var block = NonEmptyBlocks[blockIndex];
+				var pageOffset = blockIndex << Constants.PagesInBlockPower;
+				while (block != 0UL)
+				{
+					var blockBit = (int)deBruijn[(int)(((block & (ulong)-(long)block) * 0x37E84A99DAE458FUL) >> 58)];
+					var pageIndexMod = blockBit >> Constants.PageMaskShift;
+					EnsurePage(pageOffset + pageIndexMod);
+					block &= pageMasksNegative[pageIndexMod];
+				}
+			}
+		}
+
 		protected virtual void FreePage(int page)
 		{
 		}
@@ -310,6 +333,20 @@ namespace Massive
 			Array.Copy(NonEmptyBlocks, other.NonEmptyBlocks, BlocksCapacity);
 			Array.Copy(SaturatedBlocks, other.SaturatedBlocks, BlocksCapacity);
 			Array.Copy(Bits, other.Bits, Bits.Length);
+
+			// Clear trailing entries in the target beyond the source's range.
+			// Without this, rollback can leave stale bits when the target grew
+			// after the last SaveFrame (e.g., a component type first used during
+			// OnUpdate between SaveFrame and Rollback).
+			if (other.BlocksCapacity > BlocksCapacity)
+			{
+				Array.Fill(other.NonEmptyBlocks, 0UL, BlocksCapacity, other.BlocksCapacity - BlocksCapacity);
+				Array.Fill(other.SaturatedBlocks, 0UL, BlocksCapacity, other.BlocksCapacity - BlocksCapacity);
+			}
+			if (other.Bits.Length > Bits.Length)
+			{
+				Array.Fill(other.Bits, 0UL, Bits.Length, other.Bits.Length - Bits.Length);
+			}
 		}
 	}
 }

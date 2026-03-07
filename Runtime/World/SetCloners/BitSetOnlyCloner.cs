@@ -21,7 +21,10 @@ namespace Massive
 
 		public override void CopyTo(Sets sets)
 		{
-			_dataSet.CopyBitSetTo(sets.Get<T>());
+			var target = (DataSet<T>)sets.Get<T>();
+			_dataSet.CopyBitSetTo(target);
+			if (target.RetainPages)
+				target.EnsurePagesForActiveBits();
 		}
 
 		public override void DiffTo(Sets shadow, FrameDiff diff, int setIndex)
@@ -45,7 +48,7 @@ namespace Massive
 
 		public override void ApplyDiff(Sets target, FrameDiff diff, int setIndex)
 		{
-			var other = target.Get<T>();
+			var other = (DataSet<T>)target.Get<T>();
 			var entries = diff.Entries;
 			var count = diff.Count;
 
@@ -57,6 +60,9 @@ namespace Massive
 				DiffSection.SetNonEmpty, setIndex);
 			WorldDiffUtils.ApplyUlongArrayDiff(other.SaturatedBlocks, entries, count,
 				DiffSection.SetSaturated, setIndex);
+
+			if (other.RetainPages)
+				other.EnsurePagesForActiveBits();
 		}
 	}
 }

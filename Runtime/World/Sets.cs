@@ -378,6 +378,32 @@ namespace Massive
 
 			other.ComponentCount = ComponentCount;
 		}
+
+		/// <summary>
+		/// Recalculates NonEmptyBlocks and SaturatedBlocks from Bits for every
+		/// registered set. Call after forward diff application to repair
+		/// derived block arrays that XOR replay may have desynchronized.
+		/// </summary>
+		public void RebuildAllDerivedBlocks()
+		{
+			for (var i = 0; i < Sorted.Count; i++)
+			{
+				Sorted[i].RebuildDerivedBlocks();
+			}
+		}
+
+		/// <summary>
+		/// Ensures data pages exist for all active bit ranges in every registered set.
+		/// Called after forward diff application where XOR may set NonEmptyBlocks bits
+		/// for pages that don't yet have allocated data arrays.
+		/// </summary>
+		public void EnsureAllDataPages()
+		{
+			for (var i = 0; i < Sorted.Count; i++)
+			{
+				Sorted[i].EnsurePagesForActiveBits();
+			}
+		}
 	}
 
 	internal struct SetKind

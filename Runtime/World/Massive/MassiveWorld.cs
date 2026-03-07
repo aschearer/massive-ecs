@@ -21,6 +21,12 @@ namespace Massive
 		private int _head = -1;
 
 		/// <summary>
+		/// Highest _head value reached since the last ForgetHistory.
+		/// Tracks orphaned diffs after rollback: indices _head+1 through _peakHead.
+		/// </summary>
+		private int _peakHead = -1;
+
+		/// <summary>
 		/// Entities.State at frame -1 (baseline before any diffs).
 		/// Captured on first SaveFrame and on ForgetHistory.
 		/// </summary>
@@ -46,8 +52,20 @@ namespace Massive
 			_shadow = new World(worldConfig);
 		}
 
+		/// <summary>
+		/// Exposes the shadow world for diagnostic validation.
+		/// The shadow always represents the state at the last SaveFrame.
+		/// </summary>
+		public World ShadowWorld => _shadow;
+
 		public event Action FrameSaved;
 		public event Action<int> Rollbacked;
+
+		/// <summary>
+		/// Fires after CopyTo (shadow→live) but before XOR diff application during Rollback.
+		/// Passes (this, _shadow) for external validation.
+		/// </summary>
+		public event Action<MassiveWorld, World> RollbackCopied;
 
 		public int CanRollbackFrames
 		{
@@ -59,6 +77,7 @@ namespace Massive
 		public void ForgetHistory()
 		{
 			_head = -1;
+			_peakHead = -1;
 			// Full copy live -> shadow to reset baseline
 			this.CopyTo(_shadow);
 			_baselineState = Entities.CurrentState;
@@ -81,6 +100,7 @@ namespace Massive
 			}
 
 			_head++;
+			_peakHead = _head;
 
 			if (_head >= _diffs.Count)
 			{
@@ -137,6 +157,8 @@ namespace Massive
 			_shadow.Components.CopyTo(Components);
 			_shadow.Sets.CopyDataTo(Sets);
 			_shadow.Allocator.CopyTo(Allocator);
+
+			RollbackCopied?.Invoke(this, _shadow);
 
 			// Apply diffs in reverse order to undo changes
 			for (var i = _head; i > _head - frames; i--)
@@ -207,6 +229,50 @@ namespace Massive
 			return temp;
 		}
 
+		/// <summary>
+		/// Returns the range of diff indices that are orphaned after a rollback
+		/// (saved diffs that are no longer reachable by further rollback).
+		/// </summary>
+		public (int Start, int Count) GetOrphanedDiffRange()
+		{
+			int start = _head + 1;
+			int count = _peakHead - _head;
+			return count > 0 ? (start, count) : (0, 0);
+		}
+
+		/// <summary>
+		/// Returns the diff at the given index. Use with <see cref="GetOrphanedDiffRange"/>.
+		/// </summary>
+		public FrameDiff GetDiff(int index) => _diffs[index];
+
+		/// <summary>
+		/// Applies a previously captured XOR diff forward onto a target world.
+		/// Used for echo replay: the target world receives the same state changes
+		/// that the source world recorded in its original timeline.
+		/// </summary>
+		public static void ApplyDiffForward(FrameDiff diff, World target)
+		{
+			ApplyEntitiesDiff(diff, target);
+			ApplyComponentsDiff(diff, target);
+			target.Sets.ApplyDiff(target.Sets, diff);
+			// NonEmptyBlocks and SaturatedBlocks are derived summaries of Bits.
+			// XOR-based diff replay can desynchronize them when the echo's intermediate
+			// state diverges from the source's (a Bits ulong that was non-zero on both
+			// sides of the source diff produces no NEB entry, but the echo's Bits may
+			// have been zero, leaving the NEB bit unset after XOR).
+			// Rebuild the derived arrays from authoritative Bits data.
+			target.Entities.RebuildDerivedBlocks();
+			target.Sets.RebuildAllDerivedBlocks();
+			// XOR may activate pages that don't have data arrays allocated yet
+			// (e.g. pages with default-valued data produce no DataPage diff entries).
+			target.Sets.EnsureAllDataPages();
+			// Restore entity state from the diff, but never shrink UsedIds below
+			// the target's current value — the target may have entities spawned
+			// after the fork whose IDs are above the diff's UsedIds.
+			var usedIds = Math.Max(target.Entities.UsedIds, diff.EntitiesState.UsedIds);
+			target.Entities.CurrentState = new Entities.State(diff.EntitiesState.PooledIds, usedIds);
+		}
+
 		private void DiffEntities(FrameDiff diff)
 		{
 			var live = Entities;
@@ -270,7 +336,7 @@ namespace Massive
 			}
 		}
 
-		private static void ApplyEntitiesDiff(FrameDiff diff, World target)
+		internal static void ApplyEntitiesDiff(FrameDiff diff, World target)
 		{
 			var entities = target.Entities;
 			var entries = diff.Entries;
@@ -289,7 +355,7 @@ namespace Massive
 				DiffSection.EntitiesVersions, 0);
 		}
 
-		private static void ApplyComponentsDiff(FrameDiff diff, World target)
+		internal static void ApplyComponentsDiff(FrameDiff diff, World target)
 		{
 			var components = target.Components;
 			var entries = diff.Entries;

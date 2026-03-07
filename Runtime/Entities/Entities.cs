@@ -369,6 +369,17 @@ namespace Massive
 			Array.Copy(SaturatedBlocks, other.SaturatedBlocks, BlocksCapacity);
 			Array.Copy(Bits, other.Bits, Bits.Length);
 
+			// Clear trailing entries beyond source's range
+			if (other.BlocksCapacity > BlocksCapacity)
+			{
+				Array.Fill(other.NonEmptyBlocks, 0UL, BlocksCapacity, other.BlocksCapacity - BlocksCapacity);
+				Array.Fill(other.SaturatedBlocks, 0UL, BlocksCapacity, other.BlocksCapacity - BlocksCapacity);
+			}
+			if (other.Bits.Length > Bits.Length)
+			{
+				Array.Fill(other.Bits, 0UL, Bits.Length, other.Bits.Length - Bits.Length);
+			}
+
 			other.EnsureEntityAt(UsedIds - 1);
 
 			// Copy the full Pool array — entries beyond PooledIds are logically unused,

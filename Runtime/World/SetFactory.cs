@@ -51,7 +51,7 @@ namespace Massive
 			var type = typeof(T);
 			if (_isNonRollback != null && _isNonRollback(type))
 			{
-				var dataSet = new DataSet<T>(Default<T>.Value);
+				var dataSet = new DataSet<T>(Default<T>.Value) { RetainPages = true };
 				var cloner = new BitSetOnlyCloner<T>(dataSet);
 				return new Output(dataSet, cloner);
 			}
