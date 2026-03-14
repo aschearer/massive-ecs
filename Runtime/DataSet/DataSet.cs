@@ -9,234 +9,254 @@ using Unity.IL2CPP.CompilerServices;
 
 namespace Massive
 {
-	/// <summary>
-	/// Data extension for <see cref="BitSet"/>.
-	/// Resets data to default value for added elements.
-	/// </summary>
-	[Il2CppSetOption(Option.NullChecks, false)]
-	[Il2CppSetOption(Option.ArrayBoundsChecks, false)]
-	public class DataSet<T> : BitSet, IDataSet
-	{
-		public T DefaultValue { get; }
+    /// <summary>
+    /// Data extension for <see cref="BitSet"/>.
+    /// Resets data to default value for added elements.
+    /// </summary>
+    [Il2CppSetOption(Option.NullChecks, false)]
+    [Il2CppSetOption(Option.ArrayBoundsChecks, false)]
+    public class DataSet<T> : BitSet, IDataSet
+    {
+        public T DefaultValue { get; }
 
-		/// <summary>
-		/// When true, pages are not deallocated on removal.
-		/// Used for non-rollback sets so data pages survive entity destruction
-		/// and remain accessible after rollback restores bitset membership.
-		/// </summary>
-		public bool RetainPages { get; set; }
+        /// <summary>
+        /// When true, pages are not deallocated on removal.
+        /// Used for non-rollback sets so data pages survive entity destruction
+        /// and remain accessible after rollback restores bitset membership.
+        /// </summary>
+        public bool RetainPages { get; set; }
 
-		public T[][] PagedData { get; private set; } = Array.Empty<T[]>();
+        public T[][] PagedData { get; private set; } = Array.Empty<T[]>();
 
-		private T[][] DataPagePool { get; set; } = Array.Empty<T[]>();
+        private T[][] DataPagePool { get; set; } = Array.Empty<T[]>();
 
-		private int PoolCount { get; set; }
+        private int PoolCount { get; set; }
 
-		public DataSet(T defaultValue = default)
-		{
-			DefaultValue = defaultValue;
-		}
+        public DataSet(T defaultValue = default)
+        {
+            DefaultValue = defaultValue;
+        }
 
-		/// <summary>
-		/// Gets a reference to the data associated with the specified ID.
-		/// </summary>
-		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public ref T Get(int id)
-		{
-			InvalidGetOperationException.ThrowIfNotAdded(this, id);
-			return ref PagedData[id >> Constants.PageSizePower][id & Constants.PageSizeMinusOne];
-		}
+        /// <summary>
+        /// Gets a reference to the data associated with the specified ID.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public ref T Get(int id)
+        {
+            InvalidGetOperationException.ThrowIfNotAdded(this, id);
+            return ref PagedData[id >> Constants.PageSizePower][id & Constants.PageSizeMinusOne];
+        }
 
-		/// <summary>
-		/// Adds the specified ID if not present and sets the associated data.
-		/// </summary>
-		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public void Set(int id, T data)
-		{
-			NegativeArgumentException.ThrowIfNegative(id);
+        /// <summary>
+        /// Adds the specified ID if not present and sets the associated data.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void Set(int id, T data)
+        {
+            NegativeArgumentException.ThrowIfNegative(id);
 
-			var bitsIndex = id >> 6;
-			var blockIndex = id >> 12;
+            var bitsIndex = id >> 6;
+            var blockIndex = id >> 12;
 
-			EnsureBlocksCapacityAt(blockIndex);
+            EnsureBlocksCapacityAt(blockIndex);
 
-			var bitsMask = 1UL << (id & 63);
-			var blockMask = 1UL << (bitsIndex & 63);
-			var pageIndex = id >> Constants.PageSizePower;
+            var bitsMask = 1UL << (id & 63);
+            var blockMask = 1UL << (bitsIndex & 63);
+            var pageIndex = id >> Constants.PageSizePower;
 
-			if ((Bits[bitsIndex] & bitsMask) != 0UL)
-			{
-				PagedData[pageIndex][id & Constants.PageSizeMinusOne] = data;
-				return;
-			}
+            if ((Bits[bitsIndex] & bitsMask) != 0UL)
+            {
+                PagedData[pageIndex][id & Constants.PageSizeMinusOne] = data;
+                return;
+            }
 
-			if (Bits[bitsIndex] == 0UL)
-			{
-				EnsurePageInternal(pageIndex);
-				NonEmptyBlocks[blockIndex] |= blockMask;
-			}
-			Bits[bitsIndex] |= bitsMask;
-			if (Bits[bitsIndex] == ulong.MaxValue)
-			{
-				SaturatedBlocks[blockIndex] |= blockMask;
-			}
+            if (Bits[bitsIndex] == 0UL)
+            {
+                EnsurePageInternal(pageIndex);
+                NonEmptyBlocks[blockIndex] |= blockMask;
+            }
+            Bits[bitsIndex] |= bitsMask;
+            if (Bits[bitsIndex] == ulong.MaxValue)
+            {
+                SaturatedBlocks[blockIndex] |= blockMask;
+            }
 
-			PagedData[pageIndex][id & Constants.PageSizeMinusOne] = data;
+            PagedData[pageIndex][id & Constants.PageSizeMinusOne] = data;
 
-			NotifyAfterAdded(id);
+            NotifyAfterAdded(id);
 
-			for (var i = 0; i < RemoveOnAddCount; i++)
-			{
-				RemoveOnAdd[i].RemoveBit(bitsIndex, bitsMask);
-			}
-		}
+            for (var i = 0; i < RemoveOnAddCount; i++)
+            {
+                RemoveOnAdd[i].RemoveBit(bitsIndex, bitsMask);
+            }
+        }
 
-		public override void EnsurePage(int page)
-		{
-			EnsurePageInternal(page);
-		}
+        public override void EnsurePage(int page)
+        {
+            EnsurePageInternal(page);
+        }
 
-		public override void CopyData(int sourceId, int destinationId)
-		{
-			Get(destinationId) = Get(sourceId);
-		}
+        public override void CopyData(int sourceId, int destinationId)
+        {
+            Get(destinationId) = Get(sourceId);
+        }
 
-		protected override void ClearData(int id)
-		{
-			// Non-rollback sets (RetainPages) must preserve data across removal.
-			// Rollback can restore bitset membership via XOR diffs, but data is
-			// not diffed — so the values from before removal must still be intact.
-			if (RetainPages) return;
-			var pageIndex = id >> Constants.PageSizePower;
-			Debug.Assert(pageIndex < PagedData.Length && PagedData[pageIndex] != null,
-				$"ClearData: null page for {typeof(T).Name}, id={id}, page={pageIndex}");
-			PagedData[pageIndex][id & Constants.PageSizeMinusOne] = DefaultValue;
-		}
+        protected override void ClearData(int id)
+        {
+            // Non-rollback sets (RetainPages) must preserve data across removal.
+            // Rollback can restore bitset membership via XOR diffs, but data is
+            // not diffed — so the values from before removal must still be intact.
+            if (RetainPages)
+            {
+                return;
+            }
 
-		protected override void FreePage(int page)
-		{
-			if (RetainPages) return;
-			FreePageInternal(page);
-		}
+            var pageIndex = id >> Constants.PageSizePower;
+            Debug.Assert(pageIndex < PagedData.Length && PagedData[pageIndex] != null,
+                $"ClearData: null page for {typeof(T).Name}, id={id}, page={pageIndex}");
+            PagedData[pageIndex][id & Constants.PageSizeMinusOne] = DefaultValue;
+        }
 
-		protected override void FreeAllPages()
-		{
-			for (var i = 0; i < PagedData.Length; i++)
-			{
-				if (PagedData[i] != null)
-				{
-					FreePageInternal(i);
-				}
-			}
-		}
+        protected override void FreePage(int page)
+        {
+            if (RetainPages)
+            {
+                return;
+            }
 
-		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		protected internal void EnsurePageInternal(int page)
-		{
-			if (page >= PagedData.Length)
-			{
-				PagedData = PagedData.Resize(page + 1);
-			}
+            FreePageInternal(page);
+        }
 
-			PagedData[page] ??= CreatePage();
-		}
+        protected override void FreeAllPages()
+        {
+            for (var i = 0; i < PagedData.Length; i++)
+            {
+                if (PagedData[i] != null)
+                {
+                    FreePageInternal(i);
+                }
+            }
+        }
 
-		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		private void FreePageInternal(int page)
-		{
-			if (PoolCount >= DataPagePool.Length)
-			{
-				DataPagePool = DataPagePool.ResizeToNextPowOf2(PoolCount + 1);
-			}
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        protected internal void EnsurePageInternal(int page)
+        {
+            if (page >= PagedData.Length)
+            {
+                PagedData = PagedData.Resize(page + 1);
+            }
 
-			DataPagePool[PoolCount++] = PagedData[page];
-			PagedData[page] = null;
-		}
+            PagedData[page] ??= CreatePage();
+        }
 
-		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		private T[] CreatePage()
-		{
-			if (PoolCount > 0)
-			{
-				return DataPagePool[--PoolCount];
-			}
-			else
-			{
-				var newPage = new T[Constants.PageSize];
-				Array.Fill(newPage, DefaultValue);
-				return newPage;
-			}
-		}
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void FreePageInternal(int page)
+        {
+            if (PoolCount >= DataPagePool.Length)
+            {
+                DataPagePool = DataPagePool.ResizeToNextPowOf2(PoolCount + 1);
+            }
 
-		/// <summary>
-		/// Creates and returns a new data set that is an exact copy of this one.
-		/// All data is copied by value.
-		/// </summary>
-		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public DataSet<T> Clone()
-		{
-			var clone = new DataSet<T>(DefaultValue);
-			CopyTo(clone);
-			return clone;
-		}
+            DataPagePool[PoolCount++] = PagedData[page];
+            PagedData[page] = null;
+        }
 
-		/// <summary>
-		/// Copies all data and bitset state from this set into the specified one.
-		/// All data is copied by value.
-		/// </summary>
-		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public void CopyTo(DataSet<T> other)
-		{
-			CopyBitSetTo(other);
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private T[] CreatePage()
+        {
+            if (PoolCount > 0)
+            {
+                return DataPagePool[--PoolCount];
+            }
+            else
+            {
+                var newPage = new T[Constants.PageSize];
+                Array.Fill(newPage, DefaultValue);
+                return newPage;
+            }
+        }
 
-			var blocksLength = BlocksCapacity;
-			var pageMasksNegative = Constants.PageMasksNegative;
-			var deBruijn = MathUtils.DeBruijn;
-			for (var blockIndex = 0; blockIndex < blocksLength; blockIndex++)
-			{
-				var block = NonEmptyBlocks[blockIndex];
-				var pageOffset = blockIndex << Constants.PagesInBlockPower;
-				while (block != 0UL)
-				{
-					var blockBit = (int)deBruijn[(int)(((block & (ulong)-(long)block) * 0x37E84A99DAE458FUL) >> 58)];
-					var pageIndexMod = blockBit >> Constants.PageMaskShift;
+        /// <summary>
+        /// Creates and returns a new data set that is an exact copy of this one.
+        /// All data is copied by value.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public DataSet<T> Clone()
+        {
+            var clone = new DataSet<T>(DefaultValue);
+            CopyTo(clone);
+            return clone;
+        }
 
-					var pageIndex = pageOffset + pageIndexMod;
-					other.EnsurePageInternal(pageIndex);
+        /// <summary>
+        /// Copies all data and bitset state from this set into the specified one.
+        /// All data is copied by value.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void CopyTo(DataSet<T> other)
+        {
+            CopyBitSetTo(other);
 
-					var page = PagedData[pageIndex];
-					var otherPage = other.PagedData[pageIndex];
+            var blocksLength = BlocksCapacity;
+            var pageMasksNegative = Constants.PageMasksNegative;
+            var deBruijn = MathUtils.DeBruijn;
+            for (var blockIndex = 0; blockIndex < blocksLength; blockIndex++)
+            {
+                var block = NonEmptyBlocks[blockIndex];
+                var pageOffset = blockIndex << Constants.PagesInBlockPower;
+                while (block != 0UL)
+                {
+                    var blockBit = (int)deBruijn[(int)(((block & (ulong)-(long)block) * 0x37E84A99DAE458FUL) >> 58)];
+                    var pageIndexMod = blockBit >> Constants.PageMaskShift;
+
+                    var pageIndex = pageOffset + pageIndexMod;
+                    other.EnsurePageInternal(pageIndex);
+
+                    var page = PagedData[pageIndex];
+                    var otherPage = other.PagedData[pageIndex];
 
 #if UNITY_EDITOR || NET
 					Array.Copy(page, otherPage, Constants.PageSize);
 #else
-					for (var i = 0; i < Constants.PageSize; i++)
-					{
-						otherPage[i] = page[i];
-					}
+                    for (var i = 0; i < Constants.PageSize; i++)
+                    {
+                        otherPage[i] = page[i];
+                    }
 #endif
 
-					block &= pageMasksNegative[pageIndexMod];
-				}
-			}
-		}
+                    block &= pageMasksNegative[pageIndexMod];
+                }
+            }
+        }
 
-		BitSet IDataSet.BitSet => this;
+        BitSet IDataSet.BitSet => this;
 
-		Type IDataSet.ElementType => typeof(T);
+        Type IDataSet.ElementType => typeof(T);
 
-		Type IDataSet.ArrayType => typeof(T[]);
+        Type IDataSet.ArrayType => typeof(T[]);
 
-		Array IDataSet.GetPage(int page) => PagedData[page];
+        Array IDataSet.GetPage(int page)
+        {
+            return PagedData[page];
+        }
 
-		object IDataSet.GetRaw(int id) => Get(id);
+        object IDataSet.GetRaw(int id)
+        {
+            return Get(id);
+        }
 
-		void IDataSet.SetRaw(int id, object value) => Set(id, (T)value);
+        void IDataSet.SetRaw(int id, object value)
+        {
+            Set(id, (T)value);
+        }
 
-		DataPageEnumerable IDataSet.GetDataPages() => new DataPageEnumerable(this);
+        DataPageEnumerable IDataSet.GetDataPages()
+        {
+            return new DataPageEnumerable(this);
+        }
 
-		int IDataSet.ElementSize => System.Runtime.InteropServices.Marshal.SizeOf<T>();
+        int IDataSet.ElementSize => System.Runtime.InteropServices.Marshal.SizeOf<T>();
 
-		bool IDataSet.IsUnmanaged => !RuntimeHelpers.IsReferenceOrContainsReferences<T>();
-	}
+        bool IDataSet.IsUnmanaged => !RuntimeHelpers.IsReferenceOrContainsReferences<T>();
+    }
 }

@@ -1,51 +1,50 @@
-﻿#if !MASSIVE_DISABLE_ASSERT
+#if !MASSIVE_DISABLE_ASSERT
 #define MASSIVE_ASSERT
 #endif
 
-using System.Runtime.CompilerServices;
 using Unity.IL2CPP.CompilerServices;
 
 namespace Massive
 {
-	[Il2CppEagerStaticClassConstruction]
-	[Il2CppSetOption(Option.NullChecks, false)]
-	[Il2CppSetOption(Option.ArrayBoundsChecks, false)]
-	public static class WorldCopyExtensions
-	{
-		/// <summary>
-		/// Creates and returns a new world that is an exact copy of this one.
-		/// </summary>
-		public static World Clone(this World world)
-		{
-			var clone = new World(world.Config);
-			world.CopyTo(clone);
-			return clone;
-		}
+    [Il2CppEagerStaticClassConstruction]
+    [Il2CppSetOption(Option.NullChecks, false)]
+    [Il2CppSetOption(Option.ArrayBoundsChecks, false)]
+    public static class WorldCopyExtensions
+    {
+        /// <summary>
+        /// Creates and returns a new world that is an exact copy of this one.
+        /// </summary>
+        public static World Clone(this World world)
+        {
+            var clone = new World(world.Config);
+            world.CopyTo(clone);
+            return clone;
+        }
 
-		/// <summary>
-		/// Copies the contents of this world into the specified one.<br/>
-		/// Clears sets in the target world that are not present in the source.<br/>
-		/// Resets allocators in the target world that are not present in the source.
-		/// </summary>
-		/// <remarks>
-		/// Throws if the worlds have incompatible configs.
-		/// </remarks>
-		public static void CopyTo(this World world, World other)
-		{
-			IncompatibleConfigsException.ThrowIfIncompatible(world, other);
+        /// <summary>
+        /// Copies the contents of this world into the specified one.<br/>
+        /// Clears sets in the target world that are not present in the source.<br/>
+        /// Resets allocators in the target world that are not present in the source.
+        /// </summary>
+        /// <remarks>
+        /// Throws if the worlds have incompatible configs.
+        /// </remarks>
+        public static void CopyTo(this World world, World other)
+        {
+            IncompatibleConfigsException.ThrowIfIncompatible(world, other);
 
-			world.Entities.CopyTo(other.Entities);
-			world.Components.CopyTo(other.Components);
-			world.Sets.CopyTo(other.Sets);
-			world.Allocator.CopyTo(other.Allocator);
+            world.Entities.CopyTo(other.Entities);
+            world.Components.CopyTo(other.Components);
+            world.Sets.CopyTo(other.Sets);
+            world.Allocator.CopyTo(other.Allocator);
 
-			// Sets.CopyTo may reorder the target's component bindings to match
-			// the source. Components.CopyTo copies the bitmap verbatim, which
-			// uses the source's binding layout. If the source's Components.BitMap
-			// was out of sync with its own Sets (e.g. shadow worlds maintained
-			// via raw XOR diffs), the target inherits the mismatch. Rebuild
-			// from the authoritative set membership data.
-			other.Components.RebuildFromSets(other.Sets);
-		}
-	}
+            // Sets.CopyTo may reorder the target's component bindings to match
+            // the source. Components.CopyTo copies the bitmap verbatim, which
+            // uses the source's binding layout. If the source's Components.BitMap
+            // was out of sync with its own Sets (e.g. shadow worlds maintained
+            // via raw XOR diffs), the target inherits the mismatch. Rebuild
+            // from the authoritative set membership data.
+            other.Components.RebuildFromSets(other.Sets);
+        }
+    }
 }

@@ -1,7 +1,7 @@
-﻿namespace Massive
+namespace Massive
 {
-	public interface ISystem
-	{
-		void Build(int id, Allocator allocator);
-	}
+    public interface ISystem
+    {
+        public void Build(int id, Allocator allocator);
+    }
 }

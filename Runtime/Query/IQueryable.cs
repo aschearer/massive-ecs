@@ -1,15 +1,15 @@
-﻿namespace Massive
+namespace Massive
 {
-	public interface IQueryable
-	{
-		Query Query { get; }
+    public interface IQueryable
+    {
+        public Query Query { get; }
 
-		World World => Query.World;
+        public World World => Query.World;
 
-		Filter Filter => Query.Filter;
+        public Filter Filter => Query.Filter;
 
-		EntityEnumerable Entities { get; }
+        public EntityEnumerable Entities { get; }
 
-		IdsEnumerator GetEnumerator();
-	}
+        public IdsEnumerator GetEnumerator();
+    }
 }

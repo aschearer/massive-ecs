@@ -2,26 +2,26 @@ using System;
 
 namespace Massive
 {
-	public interface IDataSet
-	{
-		BitSet BitSet { get; }
+    public interface IDataSet
+    {
+        public BitSet BitSet { get; }
 
-		Type ElementType { get; }
+        public Type ElementType { get; }
 
-		Type ArrayType { get; }
+        public Type ArrayType { get; }
 
-		Array GetPage(int page);
+        public Array GetPage(int page);
 
-		void EnsurePage(int page);
+        public void EnsurePage(int page);
 
-		object GetRaw(int id);
+        public object GetRaw(int id);
 
-		void SetRaw(int id, object value);
+        public void SetRaw(int id, object value);
 
-		DataPageEnumerable GetDataPages();
+        public DataPageEnumerable GetDataPages();
 
-		int ElementSize { get; }
+        public int ElementSize { get; }
 
-		bool IsUnmanaged { get; }
-	}
+        public bool IsUnmanaged { get; }
+    }
 }

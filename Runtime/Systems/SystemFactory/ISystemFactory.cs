@@ -1,9 +1,9 @@
-﻿namespace Massive
+namespace Massive
 {
-	public interface ISystemFactory
-	{
-		ISystem Create();
+    public interface ISystemFactory
+    {
+        public ISystem Create();
 
-		int Order => 0;
-	}
+        public int Order => 0;
+    }
 }

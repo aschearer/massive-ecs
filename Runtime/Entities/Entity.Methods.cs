@@ -7,186 +7,156 @@ using Unity.IL2CPP.CompilerServices;
 
 namespace Massive
 {
-	[Il2CppSetOption(Option.NullChecks, false)]
-	[Il2CppSetOption(Option.ArrayBoundsChecks, false)]
-	public partial struct Entity
-	{
-		/// <summary>
-		/// Creates a unique entity with components of another entity.<br/>
-		/// Makes shallow copy of each component.
-		/// </summary>
-		/// <remarks>
-		/// Throws if the entity is not alive.
-		/// </remarks>
-		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public readonly Entity Clone()
-		{
-			InvalidCloneOperationException.ThrowIfEntityDead(this);
+    [Il2CppSetOption(Option.NullChecks, false)]
+    [Il2CppSetOption(Option.ArrayBoundsChecks, false)]
+    public partial struct Entity
+    {
+        /// <summary>
+        /// Creates a unique entity with components of another entity.<br/>
+        /// Makes shallow copy of each component.
+        /// </summary>
+        /// <remarks>
+        /// Throws if the entity is not alive.
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public readonly Entity Clone()
+        {
+            InvalidCloneOperationException.ThrowIfEntityDead(this);
 
-			var entityId = Id;
-			var clone = World.CreateEntity();
-			var cloneId = clone.Id;
+            var entityId = Id;
+            var clone = World.CreateEntity();
+            var cloneId = clone.Id;
 
-			var sets = World.Sets;
-			var buffer = World.Components.Buffer;
-			var componentCount = World.Components.GetAll(entityId, buffer);
+            var sets = World.Sets;
+            var buffer = World.Components.Buffer;
+            var componentCount = World.Components.GetAll(entityId, buffer);
 
-			for (var i = 0; i < componentCount; i++)
-			{
-				var set = sets.LookupByComponentId[buffer[i]];
-				set.Add(cloneId);
-				set.CopyData(entityId, cloneId);
-			}
+            for (var i = 0; i < componentCount; i++)
+            {
+                var set = sets.LookupByComponentId[buffer[i]];
+                set.Add(cloneId);
+                set.CopyData(entityId, cloneId);
+            }
 
-			return clone;
-		}
+            return clone;
+        }
 
-		/// <summary>
-		/// Destroys this entity.
-		/// </summary>
-		/// <returns>
-		/// True if the entity was destroyed; false if it was already not alive.
-		/// </returns>
-		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public readonly bool Destroy()
-		{
-			return World != null && World.Entities.Destroy(Id);
-		}
+        /// <summary>
+        /// Destroys this entity.
+        /// </summary>
+        /// <returns>
+        /// True if the entity was destroyed; false if it was already not alive.
+        /// </returns>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public readonly bool Destroy()
+        {
+            return World != null && World.Entities.Destroy(Id);
+        }
 
-		/// <summary>
-		/// Adds a component to the entity and sets its data.
-		/// </summary>
-		/// <remarks>
-		/// Throws if the entity is not alive,
-		/// or if the component has no associated data set.
-		/// </remarks>
-		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public readonly void Set<T>(T data)
-		{
-			InvalidSetOperationException.ThrowIfEntityDead(this);
+        /// <summary>
+        /// Adds a component to the entity and sets its data.
+        /// </summary>
+        /// <remarks>
+        /// Throws if the entity is not alive,
+        /// or if the component has no associated data set.
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public readonly void Set<T>(T data)
+        {
+            InvalidSetOperationException.ThrowIfEntityDead(this);
 
-			var info = TypeId<SetKind, T>.Info;
+            var info = TypeId<SetKind, T>.Info;
 
-			World.Sets.EnsureLookupByTypeAt(info.Index);
-			var candidate = World.Sets.LookupByTypeId[info.Index];
+            World.Sets.EnsureLookupByTypeAt(info.Index);
+            var candidate = World.Sets.LookupByTypeId[info.Index] ?? World.Sets.Get<T>();
+            NoDataException.ThrowIfHasNoData(candidate, info.Type, DataAccessContext.WorldSet);
 
-			if (candidate == null)
-			{
-				candidate = World.Sets.Get<T>();
-			}
+            var dataSet = (DataSet<T>)candidate;
 
-			NoDataException.ThrowIfHasNoData(candidate, info.Type, DataAccessContext.WorldSet);
+            dataSet.Set(Id, data);
+        }
 
-			var dataSet = (DataSet<T>)candidate;
+        /// <summary>
+        /// Adds a component to the entity without initializing data.
+        /// </summary>
+        /// <returns>
+        /// True if the component was added; false if it was already present.
+        /// </returns>
+        /// <remarks>
+        /// Throws if the entity is not alive.
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public readonly bool Add<T>()
+        {
+            InvalidAddOperationException.ThrowIfEntityDead(this);
 
-			dataSet.Set(Id, data);
-		}
+            var info = TypeId<SetKind, T>.Info;
 
-		/// <summary>
-		/// Adds a component to the entity without initializing data.
-		/// </summary>
-		/// <returns>
-		/// True if the component was added; false if it was already present.
-		/// </returns>
-		/// <remarks>
-		/// Throws if the entity is not alive.
-		/// </remarks>
-		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public readonly bool Add<T>()
-		{
-			InvalidAddOperationException.ThrowIfEntityDead(this);
+            World.Sets.EnsureLookupByTypeAt(info.Index);
+            var candidate = World.Sets.LookupByTypeId[info.Index] ?? World.Sets.Get<T>();
+            return candidate.Add(Id);
+        }
 
-			var info = TypeId<SetKind, T>.Info;
+        /// <summary>
+        /// Removes a component from the entity.
+        /// </summary>
+        /// <returns>
+        /// True if the component was removed; false if it was not present.
+        /// </returns>
+        /// <remarks>
+        /// Throws if the entity is not alive.
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public readonly bool Remove<T>()
+        {
+            InvalidRemoveOperationException.ThrowIfEntityDead(this);
 
-			World.Sets.EnsureLookupByTypeAt(info.Index);
-			var candidate = World.Sets.LookupByTypeId[info.Index];
+            var info = TypeId<SetKind, T>.Info;
 
-			if (candidate == null)
-			{
-				candidate = World.Sets.Get<T>();
-			}
+            World.Sets.EnsureLookupByTypeAt(info.Index);
+            var candidate = World.Sets.LookupByTypeId[info.Index] ?? World.Sets.Get<T>();
+            return candidate.Remove(Id);
+        }
 
-			return candidate.Add(Id);
-		}
+        /// <summary>
+        /// Checks whether the entity has such a component.
+        /// </summary>
+        /// <remarks>
+        /// Throws if the entity is not alive.
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public readonly bool Has<T>()
+        {
+            InvalidHasOperationException.ThrowIfEntityDead(this);
 
-		/// <summary>
-		/// Removes a component from the entity.
-		/// </summary>
-		/// <returns>
-		/// True if the component was removed; false if it was not present.
-		/// </returns>
-		/// <remarks>
-		/// Throws if the entity is not alive.
-		/// </remarks>
-		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public readonly bool Remove<T>()
-		{
-			InvalidRemoveOperationException.ThrowIfEntityDead(this);
+            var info = TypeId<SetKind, T>.Info;
 
-			var info = TypeId<SetKind, T>.Info;
+            World.Sets.EnsureLookupByTypeAt(info.Index);
+            var candidate = World.Sets.LookupByTypeId[info.Index] ?? World.Sets.Get<T>();
+            return candidate.Has(Id);
+        }
 
-			World.Sets.EnsureLookupByTypeAt(info.Index);
-			var candidate = World.Sets.LookupByTypeId[info.Index];
+        /// <summary>
+        /// Returns a reference to the component of the entity.
+        /// </summary>
+        /// <remarks>
+        /// Throws if the entity is not alive,
+        /// or if the component has no associated data set.
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public readonly ref T Get<T>()
+        {
+            InvalidGetOperationException.ThrowIfEntityDead(this);
 
-			if (candidate == null)
-			{
-				candidate = World.Sets.Get<T>();
-			}
+            var info = TypeId<SetKind, T>.Info;
 
-			return candidate.Remove(Id);
-		}
+            World.Sets.EnsureLookupByTypeAt(info.Index);
+            var candidate = World.Sets.LookupByTypeId[info.Index] ?? World.Sets.Get<T>();
+            NoDataException.ThrowIfHasNoData(candidate, info.Type, DataAccessContext.WorldGet);
 
-		/// <summary>
-		/// Checks whether the entity has such a component.
-		/// </summary>
-		/// <remarks>
-		/// Throws if the entity is not alive.
-		/// </remarks>
-		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public readonly bool Has<T>()
-		{
-			InvalidHasOperationException.ThrowIfEntityDead(this);
+            var dataSet = (DataSet<T>)candidate;
 
-			var info = TypeId<SetKind, T>.Info;
-
-			World.Sets.EnsureLookupByTypeAt(info.Index);
-			var candidate = World.Sets.LookupByTypeId[info.Index];
-
-			if (candidate == null)
-			{
-				candidate = World.Sets.Get<T>();
-			}
-
-			return candidate.Has(Id);
-		}
-
-		/// <summary>
-		/// Returns a reference to the component of the entity.
-		/// </summary>
-		/// <remarks>
-		/// Throws if the entity is not alive,
-		/// or if the component has no associated data set.
-		/// </remarks>
-		[MethodImpl(MethodImplOptions.AggressiveInlining)]
-		public readonly ref T Get<T>()
-		{
-			InvalidGetOperationException.ThrowIfEntityDead(this);
-
-			var info = TypeId<SetKind, T>.Info;
-
-			World.Sets.EnsureLookupByTypeAt(info.Index);
-			var candidate = World.Sets.LookupByTypeId[info.Index];
-
-			if (candidate == null)
-			{
-				candidate = World.Sets.Get<T>();
-			}
-
-			NoDataException.ThrowIfHasNoData(candidate, info.Type, DataAccessContext.WorldGet);
-
-			var dataSet = (DataSet<T>)candidate;
-
-			return ref dataSet.Get(Id);
-		}
-	}
+            return ref dataSet.Get(Id);
+        }
+    }
 }

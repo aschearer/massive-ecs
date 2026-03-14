@@ -1,7 +1,7 @@
-﻿namespace Massive
+namespace Massive
 {
-	public interface ISystemsCallback
-	{
-		void AfterBuilded(Systems systems);
-	}
+    public interface ISystemsCallback
+    {
+        public void AfterBuilded(Systems systems);
+    }
 }

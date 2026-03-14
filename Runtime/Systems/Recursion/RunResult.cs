@@ -1,8 +1,8 @@
 namespace Massive
 {
-	public enum RunResult
-	{
-		Idle,
-		Active,
-	}
+    public enum RunResult
+    {
+        Idle,
+        Active,
+    }
 }
