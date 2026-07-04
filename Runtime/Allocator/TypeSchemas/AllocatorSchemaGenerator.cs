@@ -13,19 +13,27 @@ namespace Massive
 	[Il2CppSetOption(Option.ArrayBoundsChecks, false)]
 	public static class AllocatorSchemaGenerator
 	{
+		// Guards the shared working buffers below. Generate rebuilds them from
+		// scratch on each call and runs during world construction on any thread,
+		// so concurrent generation would interleave and corrupt the schema.
+		private static readonly object s_lock = new object();
+
 		private static readonly List<AllocatorDataSchema> _schemas = new List<AllocatorDataSchema>();
 		private static readonly Dictionary<Type, byte> _schemaIndices = new Dictionary<Type, byte>();
 		private static readonly Dictionary<AllocatorDataSchema, byte> _existingSchemas = new Dictionary<AllocatorDataSchema, byte>();
 
 		public static AllocatorTypeSchema Generate<T>() where T : unmanaged
 		{
-			ClearBuffers();
-			ReflectionUtils.PreserveSize<T>();
+			lock (s_lock)
+			{
+				ClearBuffers();
+				ReflectionUtils.PreserveSize<T>();
 #pragma warning disable IL2087
-			var rootSchemaIndex = GetRootSchemaIndex(typeof(T));
+				var rootSchemaIndex = GetRootSchemaIndex(typeof(T));
 #pragma warning restore IL2087
-			var schema = new AllocatorTypeSchema(_schemas.ToArray(), rootSchemaIndex);
-			return schema;
+				var schema = new AllocatorTypeSchema(_schemas.ToArray(), rootSchemaIndex);
+				return schema;
+			}
 		}
 
 		public static bool HasPointers([Preserve(Member.PublicFields | Member.NonPublicFields)] Type type)

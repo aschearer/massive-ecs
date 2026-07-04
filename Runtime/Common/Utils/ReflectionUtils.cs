@@ -49,6 +49,12 @@ namespace Massive
 			return type.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic).Length > 0;
 		}
 
+		// Guards the non-concurrent s_managedCache / s_sizeOfCache below. Set and
+		// allocator creation funnel here from world construction on any thread,
+		// and s_sizeOfCache is written on every world creation, so all cache
+		// access must be serialized.
+		private static readonly object s_lock = new object();
+
 		private static readonly Dictionary<Type, bool> s_managedCache = new Dictionary<Type, bool>();
 
 		public static bool IsManaged([Preserve(Member.PublicFields | Member.NonPublicFields)] this Type type)
@@ -59,31 +65,38 @@ namespace Massive
 		[UnconditionalSuppressMessage("", "IL2072")]
 		public static bool IsUnmanaged([Preserve(Member.PublicFields | Member.NonPublicFields)] this Type type)
 		{
-			if (!s_managedCache.TryGetValue(type, out var isUnmanaged))
+			// Field recursion re-enters this lock, which Monitor permits.
+			lock (s_lock)
 			{
-				if (type.IsPrimitive || type.IsPointer || type.IsEnum)
+				if (!s_managedCache.TryGetValue(type, out var isUnmanaged))
 				{
-					isUnmanaged = true;
+					if (type.IsPrimitive || type.IsPointer || type.IsEnum)
+					{
+						isUnmanaged = true;
+					}
+					else if (!type.IsValueType)
+					{
+						isUnmanaged = false;
+					}
+					else
+					{
+						isUnmanaged = type.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
+							.All(x => x.FieldType.IsUnmanaged());
+					}
+					s_managedCache.Add(type, isUnmanaged);
 				}
-				else if (!type.IsValueType)
-				{
-					isUnmanaged = false;
-				}
-				else
-				{
-					isUnmanaged = type.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
-						.All(x => x.FieldType.IsUnmanaged());
-				}
-				s_managedCache.Add(type, isUnmanaged);
-			}
 
-			return isUnmanaged;
+				return isUnmanaged;
+			}
 		}
 
 #if NET5_0_OR_GREATER
 		public static void PreserveSize<T>()
 		{
-			s_sizeOfCache[typeof(T)] = System.Runtime.CompilerServices.Unsafe.SizeOf<T>();
+			lock (s_lock)
+			{
+				s_sizeOfCache[typeof(T)] = System.Runtime.CompilerServices.Unsafe.SizeOf<T>();
+			}
 		}
 #else
 		public static void PreserveSize<T>()
@@ -97,20 +110,23 @@ namespace Massive
 
 		public static int SizeOfUnmanaged(Type t)
 		{
-			if (!s_sizeOfCache.TryGetValue(t, out var size))
+			lock (s_lock)
 			{
-				try
+				if (!s_sizeOfCache.TryGetValue(t, out var size))
 				{
-					size = SizeOfGeneric(t);
+					try
+					{
+						size = SizeOfGeneric(t);
+					}
+					catch
+					{
+						throw new Exception($"Can't get runtime size of {t.GetFullGenericName()}.");
+					}
+					s_sizeOfCache.Add(t, size);
 				}
-				catch
-				{
-					throw new Exception($"Can't get runtime size of {t.GetFullGenericName()}.");
-				}
-				s_sizeOfCache.Add(t, size);
-			}
 
-			return size;
+				return size;
+			}
 		}
 
 		private static int SizeOfGeneric(Type t)
